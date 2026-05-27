@@ -1,296 +1,561 @@
 -- ==========================================
--- == VOID HUB V2 (ADVANCED MOBILE UI) ==
+-- == VOID HUB V3 - MOBILE OPTIMIZED ==
+-- == نظام سحب ازرار منفصل + سموث ==
 -- ==========================================
 repeat task.wait() until game:IsLoaded()
 
--- تنظيف آمن للنسخة القديمة
-if _G.VoidRunning then
-    _G.VoidRunning = false
-    pcall(function()
-        if _G.VoidLockConn then _G.VoidLockConn:Disconnect() end
-        if _G.VoidSpeedConn then _G.VoidSpeedConn:Disconnect() end
-        local h = game:GetService("Players").LocalPlayer.Character and game:GetService("Players").LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if h then h.AssemblyLinearVelocity = Vector3.new(0,0,0) end
-    end)
-    task.wait(0.5)
+-- ====== تنظيف نسخة قديمة ======
+if _G.VoidV3_Running then
+    _G.VoidV3_Running = false
+    _G.VoidV3_Cleanup = true
+    task.wait(0.6)
 end
-_G.VoidRunning = true
+_G.VoidV3_Running = true
+_G.VoidV3_Cleanup = false
 
-local S1 = game:GetService("Players")
-local S2 = game:GetService("RunService")
-local S3 = game:GetService("UserInputService")
-local S5 = game:GetService("TweenService")
-local S6 = game:GetService("CoreGui")
-local LP = S1.LocalPlayer
-local ScriptCore = true
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+local LP = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
-local AllCon = {}
-local function Track(c) table.insert(AllCon, c) return c end
-local function DisAll() for _, c in ipairs(AllCon) do pcall(function() c:Disconnect() end) end AllCon = {} end
-
--- == إعدادات الثيم المتقدم (Neon Dark) ==
+-- ====== الثيم ======
 local Theme = {
-    BG = Color3.fromRGB(8, 8, 14),
-    Panel = Color3.fromRGB(16, 16, 26),
-    Accent = Color3.fromRGB(0, 195, 255),
-    AccentDark = Color3.fromRGB(0, 80, 120),
-    Text = Color3.fromRGB(210, 215, 225),
-    Success = Color3.fromRGB(0, 255, 170),
-    Error = Color3.fromRGB(255, 60, 80),
+    BG = Color3.fromRGB(10, 6, 18),
+    Panel = Color3.fromRGB(20, 12, 35),
+    Accent = Color3.fromRGB(138, 43, 226),
+    AccentLight = Color3.fromRGB(180, 90, 255),
+    Text = Color3.fromRGB(230, 230, 240),
+    TextDim = Color3.fromRGB(150, 140, 170),
+    Success = Color3.fromRGB(80, 255, 120),
+    Danger = Color3.fromRGB(255, 60, 100),
+    Off = Color3.fromRGB(60, 60, 80),
 }
+Theme.BGTransparent = 0.55
 
-local SC = math.clamp(math.min(workspace.CurrentCamera.ViewportSize.X / 1080, workspace.CurrentCamera.ViewportSize.Y / 1920), 0.9, 1.5)
+-- ====== مقياس الشاشة للهاتف ======
+local SC = math.clamp(
+    math.min(Camera.ViewportSize.X / 1080, Camera.ViewportSize.Y / 1920),
+    0.8, 1.6
+)
 
--- == أدوات بناء الواجهة المتقدمة ==
+-- ====== أدوات UI ======
 local UI = {}
-function UI:Corner(Parent, Rad)
+
+function UI:Corner(parent, rad)
     local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, Rad or 12)
-    c.Parent = Parent
+    c.CornerRadius = UDim.new(0, (rad or 14) * SC)
+    c.Parent = parent
     return c
 end
 
-function UI:Stroke(Parent, Color, Thick)
+function UI:Stroke(parent, color, thick)
     local s = Instance.new("UIStroke")
-    s.Thickness = Thick or 1.5
-    s.Color = Color or Theme.Accent
-    s.Transparency = 0.4
-    s.Parent = Parent
+    s.Color = color or Theme.Accent
+    s.Thickness = (thick or 1.5) * SC
+    s.Transparency = 0.35
+    s.Parent = parent
     return s
 end
 
-function UI:Glow(Parent)
-    local g = Instance.new("UIGradient")
-    g.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Theme.AccentDark),
-        ColorSequenceKeypoint.new(0.5, Theme.Accent),
-        ColorSequenceKeypoint.new(1, Theme.AccentDark)
-    })
-    g.Parent = Parent
-    return g
+function UI:Shadow(parent)
+    local s = Instance.new("ImageLabel")
+    s.Name = "Shadow"
+    s.AnchorPoint = Vector2.new(0.5, 0.5)
+    s.BackgroundTransparency = 1
+    s.Position = UDim2.new(0.5, 0, 0.5, 4 * SC)
+    s.Size = UDim2.new(1, 16 * SC, 1, 16 * SC)
+    s.Image = "rbxassetid://1316045217"
+    s.ImageColor3 = Color3.fromRGB(0, 0, 0)
+    s.ImageTransparency = 0.5
+    s.ScaleType = Enum.ScaleType.Slice
+    s.SliceCenter = Rect.new(10, 10, 118, 118)
+    s.ZIndex = parent.ZIndex - 1
+    s.Parent = parent
+    return s
 end
 
-function UI:FastTween(Inst, Props, Time, Style)
-    return S5:Create(Inst, TweenInfo.new(Time or 0.2, Style or Enum.EasingStyle.Quart, Enum.EasingDirection.Out), Props)
+function UI:Tween(inst, props, time, style)
+    return TweenService:Create(inst,
+        TweenInfo.new(time or 0.25, style or Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+        props
+    )
 end
 
--- == المتغيرات الآمنة ==
-local LKA = false
-local LockConn = nil
-local Ky = { LK = Enum.KeyCode.X }
-
-local function gH()
-    local c = LP.Character
-    if not c then return nil end
-    return c:FindFirstChild("HumanoidRootPart")
-end
-
--- ==========================================
--- == بناء الواجهة الرئيسية (ثابتة، لا تتحرك) ==
--- ==========================================
+-- ====== GUI رئيسي ======
 local MainGui = Instance.new("ScreenGui")
-MainGui.Name = "VoidV2UI"
+MainGui.Name = "VoidV3_" .. tostring(tick())
 MainGui.ResetOnSpawn = false
-MainGui.Parent = S6
-MainGui:SetAttribute("VoidAuth", true)
+MainGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+MainGui.Parent = CoreGui
 
-local BaseFrame = Instance.new("Frame")
-BaseFrame.Size = UDim2.new(0, 140*SC, 0, 140*SC)
-BaseFrame.Position = UDim2.new(0, 20*SC, 0.5, -70*SC)
-BaseFrame.BackgroundColor3 = Theme.BG
-BaseFrame.BackgroundTransparency = 0.05
-BaseFrame.Parent = MainGui
-UI:Corner(BaseFrame, 22)
-UI:Stroke(BaseFrame, Theme.Accent, 2)
-UI:Glow(BaseFrame:FindFirstChildOfClass("UIStroke"))
+-- ====== المتغيرات ======
+local LockOn = false
+local LockConn = nil
+local ActiveCons = {}
 
--- طبقة التوهج الداخلي
-local InnerGlow = Instance.new("ImageLabel")
-InnerGlow.Size = UDim2.new(1, -20*SC, 1, -20*SC)
-InnerGlow.Position = UDim2.new(0, 10*SC, 0, 10*SC)
-InnerGlow.BackgroundColor3 = Theme.Accent
-InnerGlow.BackgroundTransparency = 0.95
-InnerGlow.Parent = BaseFrame
-UI:Corner(InnerGlow, 16)
+local function Track(c)
+    table.insert(ActiveCons, c)
+    return c
+end
 
--- == زر اللوك ==
-local LockBtn = Instance.new("TextButton")
-LockBtn.Size = UDim2.new(0, 120*SC, 0, 120*SC)
-LockBtn.Position = UDim2.new(0.5, -60*SC, 0.5, -60*SC)
-LockBtn.BackgroundColor3 = Theme.Panel
-LockBtn.Text = "LCK"
-LockBtn.TextColor3 = Theme.Text
-LockBtn.Font = Enum.Font.GothamBlack
-LockBtn.TextSize = 22*SC
-LockBtn.BorderSizePixel = 0
-LockBtn.AutoButtonColor = AutoButtonColor.Default
-LockBtn.Parent = BaseFrame
-UI:Corner(LockBtn, 18)
-UI:Stroke(LockBtn, Color3.fromRGB(40, 40, 60), 1)
+local function ClearCons()
+    for _, c in ipairs(ActiveCons) do
+        pcall(function() c:Disconnect() end)
+    end
+    ActiveCons = {}
+end
 
--- مؤشر الحالة (نقطة صغيرة تضيء وتطفأ)
-local StatusIndicator = Instance.new("Frame")
-StatusIndicator.Size = UDim2.new(0, 10*SC, 0, 10*SC)
-StatusIndicator.Position = UDim2.new(0.5, -5*SC, 0.92, -15*SC)
-StatusIndicator.BackgroundColor3 = Theme.Error
-StatusIndicator.Parent = BaseFrame
-UI:Corner(StatusIndicator, 5)
+local function GetHRP()
+    local char = LP.Character
+    if not char then return nil end
+    return char:FindFirstChild("HumanoidRootPart")
+end
 
 -- ==========================================
--- == نظام اللوك الجديد (محمي 100% ضد الأخطاء) ==
+-- == نظام DRAG المتقدم (لا يعتبر سحب = كليك) ==
 -- ==========================================
-local function tLK()
-    -- التأكد من وجود الشخصية أولاً
-    local h = gH()
-    if not h then LKA = false return end
+local function MakeDraggable(frame, dragHandle)
+    dragHandle = dragHandle or frame
+    
+    local isDragging = false
+    local dragStart = nil
+    local startPos = nil
+    local dragThreshold = 6 * SC -- حد الحركة اللي يعتبرها سحب
 
-    LKA = not LKA
+    local inputBeganConn
+    local inputChangedConn
+    local inputEndedConn
 
-    -- تحديث الواجهة بأمان
-    pcall(function()
-        LockBtn.TextColor3 = LKA and Theme.Success or Theme.Text
-        StatusIndicator.BackgroundColor3 = LKA and Theme.Success or Theme.Error
-        if LKA then
-            UI:FastTween(LockBtn, {Size = UDim2.new(0, 115*SC, 0, 115*SC)}, 0.1):Play()
-            UI:FastTween(LockBtn, {Size = UDim2.new(0, 120*SC, 0, 120*SC)}, 0.15, Enum.EasingStyle.Back):Play()
+    inputBeganConn = dragHandle.InputBegan:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.Touch and 
+           input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+            return
+        end
+        
+        isDragging = false
+        dragStart = input.Position
+        startPos = frame.Position
+        
+        -- ننتظر InputChanged عشان نعرف إذا سحب ولا لا
+    end)
+
+    inputChangedConn = UserInputService.InputChanged:Connect(function(input)
+        if (input.UserInputType ~= Enum.UserInputType.Touch and 
+            input.UserInputType ~= Enum.UserInputType.MouseMovement) then
+            return
+        end
+        
+        if dragStart then
+            local delta = (input.Position - dragStart).Magnitude
+            if delta > dragThreshold then
+                isDragging = true
+            end
+            
+            if isDragging then
+                local deltaX = input.Position.X - dragStart.X
+                local deltaY = input.Position.Y - dragStart.Y
+                frame.Position = UDim2.new(
+                    startPos.X.Scale, startPos.X.Offset + deltaX,
+                    startPos.Y.Scale, startPos.Y.Offset + deltaY
+                )
+            end
         end
     end)
 
-    if LKA then
-        -- إعداد التثبيت
+    inputEndedConn = UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.Touch and 
+           input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+            return
+        end
+        
+        dragStart = nil
+        startPos = nil
+        -- isDragging يرجع false تلقائي
+    end)
+
+    Track(inputBeganConn)
+    Track(inputChangedConn)
+    Track(inputEndedConn)
+    
+    -- دالة نرجعها عشان نعرف إذا كان سحب ولا ضغطة
+    return function() return isDragging end
+end
+
+-- ==========================================
+-- == بناء الواجهة الرئيسية ==
+-- ==========================================
+
+-- الإطار الرئيسي
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainPanel"
+MainFrame.Size = UDim2.new(0, 170 * SC, 0, 200 * SC)
+MainFrame.Position = UDim2.new(0, 15 * SC, 0.5, -100 * SC)
+MainFrame.BackgroundColor3 = Theme.BG
+MainFrame.BackgroundTransparency = Theme.BGTransparent
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = MainGui
+UI:Corner(MainFrame, 20)
+UI:Stroke(MainFrame, Theme.Accent, 2)
+
+-- الخلفية البنفسجية المتوهجة
+local GlowBg = Instance.new("Frame")
+GlowBg.Name = "GlowBg"
+GlowBg.Size = UDim2.new(1, -10 * SC, 1, -10 * SC)
+GlowBg.Position = UDim2.new(0, 5 * SC, 0, 5 * SC)
+GlowBg.BackgroundColor3 = Theme.Accent
+GlowBg.BackgroundTransparency = 0.92
+GlowBg.BorderSizePixel = 0
+GlowBg.Parent = MainFrame
+UI:Corner(GlowBg, 16)
+
+-- العنوان
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "Title"
+TitleLabel.Size = UDim2.new(1, -20 * SC, 0, 28 * SC)
+TitleLabel.Position = UDim2.new(0, 10 * SC, 0, 8 * SC)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "VOID HUB"
+TitleLabel.TextColor3 = Theme.AccentLight
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextSize = 18 * SC
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Center
+TitleLabel.Parent = MainFrame
+
+-- خط فاصل
+local Divider = Instance.new("Frame")
+Divider.Size = UDim2.new(1, -24 * SC, 0, 1.5 * SC)
+Divider.Position = UDim2.new(0, 12 * SC, 0, 38 * SC)
+Divider.BackgroundColor3 = Theme.Accent
+Divider.BackgroundTransparency = 0.5
+Divider.BorderSizePixel = 0
+Divider.Parent = MainFrame
+UI:Corner(Divider, 1)
+
+-- ====== زر اللوك الكبير ======
+local LockBtn = Instance.new("TextButton")
+LockBtn.Name = "LockBtn"
+LockBtn.Size = UDim2.new(0, 130 * SC, 0, 130 * SC)
+LockBtn.Position = UDim2.new(0.5, -65 * SC, 0.5, -40 * SC)
+LockBtn.BackgroundColor3 = Theme.Panel
+LockBtn.BackgroundTransparency = 0.1
+LockBtn.Text = "LOCK"
+LockBtn.TextColor3 = Theme.Text
+LockBtn.Font = Enum.Font.GothamBlack
+LockBtn.TextSize = 22 * SC
+LockBtn.BorderSizePixel = 0
+LockBtn.AutoButtonColor = false
+LockBtn.Parent = MainFrame
+UI:Corner(LockBtn, 60) -- دائري تقريباً
+UI:Stroke(LockBtn, Theme.Off, 2)
+
+-- التوهج الداخلي
+local BtnGlow = Instance.new("Frame")
+BtnGlow.Name = "BtnGlow"
+BtnGlow.Size = UDim2.new(1, -8 * SC, 1, -8 * SC)
+BtnGlow.Position = UDim2.new(0, 4 * SC, 0, 4 * SC)
+BtnGlow.BackgroundColor3 = Theme.Accent
+BtnGlow.BackgroundTransparency = 0.9
+BtnGlow.BorderSizePixel = 0
+BtnGlow.Parent = LockBtn
+UI:Corner(BtnGlow, 60)
+
+-- مؤشر الحالة
+local StatusDot = Instance.new("Frame")
+StatusDot.Name = "Status"
+StatusDot.Size = UDim2.new(0, 10 * SC, 0, 10 * SC)
+StatusDot.Position = UDim2.new(0.5, -5 * SC, 0.92, -12 * SC)
+StatusDot.BackgroundColor3 = Theme.Danger
+StatusDot.BorderSizePixel = 0
+StatusDot.Parent = MainFrame
+UI:Corner(StatusDot, 5)
+
+-- مؤشر النص
+local StatusText = Instance.new("TextLabel")
+StatusText.Name = "StatusText"
+StatusText.Size = UDim2.new(1, 0, 0, 16 * SC)
+StatusText.Position = UDim2.new(0, 0, 1, -22 * SC)
+StatusText.BackgroundTransparency = 1
+StatusText.Text = "OFF"
+StatusText.TextColor3 = Theme.TextDim
+StatusText.Font = Enum.Font.Gotham
+StatusText.TextSize = 11 * SC
+StatusText.Parent = MainFrame
+
+-- ====== تفعيل السحب للإطار ======
+local IsDragging = MakeDraggable(MainFrame)
+
+-- ====== تأثيرات الزر ======
+local function SetBtnActive(active)
+    if active then
+        UI:Tween(LockBtn, {BackgroundColor3 = Theme.Accent}, 0.3):Play()
+        UI:Tween(LockBtn, {TextColor3 = Color3.fromRGB(255, 255, 255)}, 0.3):Play()
+        UI:Tween(BtnGlow, {BackgroundTransparency = 0.6}, 0.3):Play()
+        UI:Tween(StatusDot, {BackgroundColor3 = Theme.Success}, 0.3):Play()
+        StatusText.Text = "LOCKED"
+        StatusText.TextColor3 = Theme.Success
+        
+        -- تأثير نبضة
+        UI:Tween(LockBtn, {Size = UDim2.new(0, 125 * SC, 0, 125 * SC)}, 0.1):Play()
+        task.delay(0.1, function()
+            UI:Tween(LockBtn, {Size = UDim2.new(0, 130 * SC, 0, 130 * SC)}, 0.2, Enum.EasingStyle.Back):Play()
+        end)
+    else
+        UI:Tween(LockBtn, {BackgroundColor3 = Theme.Panel}, 0.3):Play()
+        UI:Tween(LockBtn, {TextColor3 = Theme.Text}, 0.3):Play()
+        UI:Tween(BtnGlow, {BackgroundTransparency = 0.9}, 0.3):Play()
+        UI:Tween(StatusDot, {BackgroundColor3 = Theme.Danger}, 0.3):Play()
+        StatusText.Text = "OFF"
+        StatusText.TextColor3 = Theme.TextDim
+        
+        UI:Tween(LockBtn, {Size = UDim2.new(0, 130 * SC, 0, 130 * SC)}, 0.2):Play()
+    end
+end
+
+-- تأثير hover
+LockBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or 
+       input.UserInputType == Enum.UserInputType.MouseMovement then
+        if not LockOn then
+            UI:Tween(LockBtn, {BackgroundColor3 = Color3.fromRGB(35, 22, 55)}, 0.15):Play()
+        end
+    end
+end)
+
+LockBtn.InputEnded:Connect(function(input)
+    if not LockOn then
+        UI:Tween(LockBtn, {BackgroundColor3 = Theme.Panel}, 0.15):Play()
+    end
+end)
+
+-- ==========================================
+-- == نظام اللوك السلس (Smooth) ==
+-- ==========================================
+local function ToggleLock()
+    if _G.VoidV3_Cleanup then return end
+    
+    local hrp = GetHRP()
+    if not hrp then
+        LockOn = false
+        SetBtnActive(false)
+        return
+    end
+
+    LockOn = not LockOn
+    SetBtnActive(LockOn)
+
+    if LockOn then
+        -- إعداد AngularVelocity
         pcall(function()
-            local att = h:FindFirstChild("V_Att") or Instance.new("Attachment", h)
-            att.Name = "V_Att"
-            local av = h:FindFirstChild("V_AngVel") or Instance.new("AngularVelocity", h)
-            av.Name = "V_AngVel"
+            local att = hrp:FindFirstChild("V3_Att") or Instance.new("Attachment", hrp)
+            att.Name = "V3_Att"
+            
+            local av = hrp:FindFirstChild("V3_AV") or Instance.new("AngularVelocity", hrp)
+            av.Name = "V3_AV"
             av.Attachment0 = att
             av.MaxTorque = math.huge
             av.ReactionTorqueEnabled = false
-            av.Parent = h
         end)
 
-        LockConn = Track(S2.Heartbeat:Connect(function(dt)
-            if not LKA or not ScriptCore then return end
+        LockConn = Track(RunService.Heartbeat:Connect(function(dt)
+            if not LockOn or _G.VoidV3_Cleanup then return end
             
-            -- إعادة التحقق من الوجود في كل فريم (يمنع الكراش 100%)
-            local h = gH()
+            local h = GetHRP()
             if not h or not h.Parent then
-                LKA = false
-                if LockConn then LockConn:Disconnect() LockConn = nil end
-                pcall(function() StatusIndicator.BackgroundColor3 = Theme.Error end)
+                LockOn = false
+                SetBtnActive(false)
+                if LockConn then
+                    LockConn:Disconnect()
+                    LockConn = nil
+                end
                 return
             end
 
-            local target, targetHrp = nil, nil
+            -- البحث عن أقرب لاعب
+            local bestTarget = nil
+            local bestHRP = nil
             local minDist = math.huge
-            
-            for _, p in ipairs(S1:GetPlayers()) do
-                if p ~= LP and p.Character then
-                    local o = p.Character:FindFirstChild("HumanoidRootPart")
-                    local hum = p.Character:FindFirstChild("Humanoid")
-                    if o and hum and hum.Health > 0 then
-                        local dist = (h.Position - o.Position).Magnitude
+
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LP and plr.Character then
+                    local oh = plr.Character:FindFirstChild("HumanoidRootPart")
+                    local hum = plr.Character:FindFirstChild("Humanoid")
+                    if oh and hum and hum.Health > 0 then
+                        local dist = (h.Position - oh.Position).Magnitude
                         if dist < minDist then
                             minDist = dist
-                            target = p
-                            targetHrp = o
+                            bestTarget = plr
+                            bestHRP = oh
                         end
                     end
                 end
             end
 
-            if target and targetHrp then
-                -- فيزياء الحركة السلسة
-                local dir = targetHrp.Position - h.Position
-                local yDiff = dir.Y
+            if bestHRP then
+                local dir = bestHRP.Position - h.Position
                 local flatDir = Vector3.new(dir.X, 0, dir.Z)
+                local yDiff = dir.Y
 
-                -- التحكم الأفقي السلس
-                local targetSpeed = math.clamp(flatDir.Magnitude * 8, 0, 65)
-                local moveDir = flatDir.Magnitude > 0.5 and flatDir.Unit * targetSpeed or Vector3.new(0,0,0)
+                -- سرعة أفقية سلسة
+                local hSpeed = math.clamp(flatDir.Magnitude * 6, 0, 55)
+                local hVel = flatDir.Magnitude > 0.5 and flatDir.Unit * hSpeed or Vector3.zero
 
-                -- التحكم العمودي السلس
-                local ySpeed = 0
-                if math.abs(yDiff) > 1 then
-                    ySpeed = math.clamp(yDiff * 12, -75, 75)
+                -- سرعة عمودية سلسة
+                local vSpeed = 0
+                if math.abs(yDiff) > 2 then
+                    vSpeed = math.clamp(yDiff * 8, -60, 60)
                 end
 
-                local finalVel = Vector3.new(moveDir.X, ySpeed, moveDir.Z)
+                local targetVel = Vector3.new(hVel.X, vSpeed, hVel.Z)
+                
+                -- Lerp سلس جداً (0.18 = سموث ممتاز)
+                h.AssemblyLinearVelocity = h.AssemblyLinearVelocity:Lerp(targetVel, 0.18)
 
-                -- استخدام Lerp لمنع الإهتزاز نهائياً
-                h.AssemblyLinearVelocity = h.AssemblyLinearVelocity:Lerp(finalVel, 0.25)
-
-                -- الدوران السلس
+                -- دوران سلس
                 pcall(function()
-                    local av = h:FindFirstChild("V_AngVel")
-                    if av and flatDir.Magnitude > 0.5 then
-                        local lookAt = CFrame.lookAt(h.Position, targetHrp.Position)
-                        local relCF = h.CFrame:ToObjectSpace(lookAt)
-                        local axis, angle = relCF:ToAxisAngle()
-
-                        if angle > 0.001 then
-                            local spinSpeed = math.clamp(angle * 15, 0, 15)
+                    local av = h:FindFirstChild("V3_AV")
+                    if av and flatDir.Magnitude > 1 then
+                        local lookCF = CFrame.lookAt(h.Position, bestHRP.Position)
+                        local rel = h.CFrame:ToObjectSpace(lookCF)
+                        local axis, angle = rel:ToAxisAngle()
+                        
+                        if angle > 0.002 then
                             local worldAxis = h.CFrame:VectorToWorldSpace(axis)
-                            av.AngularVelocity = av.AngularVelocity:Lerp(worldAxis * spinSpeed * Vector3.new(1, 1, 0.1), 0.3)
+                            local spin = math.clamp(angle * 12, 0, 12)
+                            av.AngularVelocity = av.AngularVelocity:Lerp(
+                                worldAxis * spin * Vector3.new(1, 1, 0.08), 0.25
+                            )
                         else
-                            -- تهدئة الدوران تماماً عند الاستقامة
-                            av.AngularVelocity = av.AngularVelocity:Lerp(Vector3.zero, 0.15)
+                            av.AngularVelocity = av.AngularVelocity:Lerp(Vector3.zero, 0.2)
                         end
                     else
-                        av.AngularVelocity = av.AngularVelocity:Lerp(Vector3.zero, 0.15)
+                        local av = h:FindFirstChild("V3_AV")
+                        if av then av.AngularVelocity = av.AngularVelocity:Lerp(Vector3.zero, 0.2) end
                     end
                 end)
             else
-                -- التوقف التدريجي عند فقدان الهدف
-                h.AssemblyLinearVelocity = h.AssemblyLinearVelocity:Lerp(Vector3.new(0, h.AssemblyLinearVelocity.Y > 5 and 10 or 0, 0), 0.1)
+                -- لا يوجد هدف - توقف تدريجي
+                h.AssemblyLinearVelocity = h.AssemblyLinearVelocity:Lerp(
+                    Vector3.new(0, math.clamp(h.AssemblyLinearVelocity.Y, -5, 5), 0), 0.1
+                )
                 pcall(function()
-                    local av = h:FindFirstChild("V_AngVel")
-                    if av then av.AngularVelocity = av.AngularVelocity:Lerp(Vector3.zero, 0.1) end
+                    local av = h:FindFirstChild("V3_AV")
+                    if av then av.AngularVelocity = av.AngularVelocity:Lerp(Vector3.zero, 0.15) end
                 end)
             end
-        end)
+        end))
     else
-        -- إلغاء اللوك
-        if LockConn then LockConn:Disconnect() LockConn = nil end
+        -- إيقاف اللوك
+        if LockConn then
+            LockConn:Disconnect()
+            LockConn = nil
+        end
         
-        -- إيقاف سلس بدون تيبط
-        local h = gH()
+        local h = GetHRP()
         if h then
-            UI:FastTween(h, {AssemblyLinearVelocity = Vector3.new(0, h.AssemblyLinearVelocity.Y > 5 and 10 or 0, 0)}, 0.5, Enum.EasingStyle.Quad):Play()
+            -- توقف سلس
+            h.AssemblyLinearVelocity = h.AssemblyLinearVelocity:Lerp(Vector3.zero, 0.3)
+            pcall(function()
+                local av = h:FindFirstChild("V3_AV")
+                if av then av.AngularVelocity = Vector3.zero end
+            end)
         end
     end
 end
 
-LockBtn.MouseButton1Click:Connect(tLK)
-
--- == الهوتكي ==
-Track(S3.InputBegan:Connect(function(i, g)
-    if g then return end
-    if i.KeyCode == Ky.LK then tLK() end
-end))
-
--- == إعادة التشغيل الآمنة عند الريسباون ==
-LP.CharacterAdded:Connect(function(char)
-    task.wait(1)
-    -- إيقاف الحركة القديمة إن وجدت
-    if LKA then 
-        LKA = false 
-        if LockConn then LockConn:Disconnect() LockConn = nil end 
-    end
-    -- لا يعيد تشغيله تلقائياً عشان اللاعب يتحكم
+-- ====== معالجة الضغط على الزر (مع نظام السحب) ======
+LockBtn.MouseButton1Down:Connect(function()
+    -- نسجل وقت الضغط
+    local pressTime = tick()
+    local pressPos = UserInputService:GetMouseLocation()
+    
+    -- ننتظر الـ InputEnded
+    local endedConn
+    endedConn = UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or 
+           input.UserInputType == Enum.UserInputType.MouseButton1 then
+            
+            endedConn:Disconnect()
+            
+            -- نتحقق: هل كان سحب ولا ضغطة؟
+            local releasePos = input.Position
+            local dragDist = (Vector2.new(releasePos.X, releasePos.Y) - pressPos).Magnitude
+            local pressDuration = tick() - pressTime
+            
+            -- لو المسافة صغيرة والوقت قصير = ضغطة حقيقية
+            if dragDist < dragThreshold * 1.5 and pressDuration < 0.4 then
+                ToggleLock()
+            end
+        end
+    end)
 end)
 
--- == التنظيف الفاخر عند الخروج النهائي ==
-local function cleanup()
-    ScriptCore = false
-    _G.VoidRunning = false
-    LKA = false
-    DisAll()
-    if LockConn then LockConn:Disconnect() end
-    local h = gH() if h then h.AssemblyLinearVelocity = Vector3.new(0,0,0) end
+-- ====== هوتكي (X) ======
+Track(UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.X then
+        ToggleLock()
+    end
+end))
+
+-- ====== إعادة الضبط عند Respawn ======
+LP.CharacterAdded:Connect(function(char)
+    task.wait(1.2)
+    if LockOn then
+        LockOn = false
+        SetBtnActive(false)
+        if LockConn then
+            LockConn:Disconnect()
+            LockConn = nil
+        end
+    end
+end)
+
+-- ====== تنظيف ======
+_G.VoidV3_CleanupFunc = function()
+    _G.VoidV3_Cleanup = true
+    _G.VoidV3_Running = false
+    LockOn = false
+    
+    if LockConn then LockConn:Disconnect() LockConn = nil end
+    ClearCons()
+    
+    local h = GetHRP()
+    if h then
+        h.AssemblyLinearVelocity = Vector3.zero
+        pcall(function()
+            local av = h:FindFirstChild("V3_AV")
+            if av then av.AngularVelocity = Vector3.zero end
+        end)
+    end
+    
     pcall(function()
-        for _, g in ipairs(S6:GetChildren()) do
-            if g:GetAttribute("VoidAuth") then g:Destroy() end
+        for _, g in ipairs(CoreGui:GetChildren()) do
+            if g.Name:find("VoidV3_") then
+                g:Destroy()
+            end
         end
     end)
 end
+
+-- ====== نبضة حية ======
+task.spawn(function()
+    while _G.VoidV3_Running and not _G.VoidV3_Cleanup do
+        if LockOn then
+            -- نبضة خفيفة للمؤشر
+            pcall(function()
+                UI:Tween(StatusDot, {Size = UDim2.new(0, 12 * SC, 0, 12 * SC)}, 0.5):Play()
+                task.delay(0.5, function()
+                    pcall(function()
+                        UI:Tween(StatusDot, {Size = UDim2.new(0, 10 * SC, 0, 10 * SC)}, 0.5):Play()
+                    end)
+                end)
+            end)
+        end
+        task.wait(1)
+    end
+end)
+
+print("[VoidV3] Loaded - Mobile Optimized | Drag System Active")
